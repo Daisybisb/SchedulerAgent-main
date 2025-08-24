@@ -1,0 +1,54 @@
+name: Deploy SchedulerAgent Function App
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AZURE_FUNCTIONAPP_NAME: SchedulerAgent              # ← 改成你的現有 Function App 名稱
+      AZURE_FUNCTIONAPP_PACKAGE_PATH: SchedulerAgent_function
+      PYTHON_VERSION: '3.11'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-html
+
+      - name: Run tests and generate HTML report
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          mkdir -p reports
+          pytest --html=reports/test-report.html --self-contained-html
+
+      - name: Upload pytest report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-html-report
+          path: reports/test-report.html
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
