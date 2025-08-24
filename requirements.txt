@@ -1,0 +1,6 @@
+pytest
+pytest-html
+azure-functions
+pandas>=2.1
+openpyxl>=3.1
+azure-storage-blob>=12.20
