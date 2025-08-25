@@ -1,0 +1,6 @@
+# SchedulerAgent_function/requirements.txt（替代建議）
+azure-functions~=1.21
+pandas~=2.2     # 若 2.1 專案相容，也可寫 ~=2.1（依你目前碼用到的 API）
+openpyxl~=3.1
+azure-storage-blob~=12.20
+# 若有其他套件需求，請在此補充
