@@ -26,9 +26,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-html
-
+          pip install -r requirements-dev.txt
+          
       - name: Run tests and generate HTML report
         env:
           PYTHONPATH: ${{ github.workspace }}
