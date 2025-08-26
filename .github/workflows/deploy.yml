@@ -1,61 +1,58 @@
-name: Deploy SchedulerAgent Function App
+name: Deploy SchedulerAgent to Azure Functions
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC 登入必要
+  contents: read
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
-    env:
-      AZURE_FUNCTIONAPP_NAME: SchedulerAgent              # ← 改成你的現有 Function App 名稱
-      AZURE_FUNCTIONAPP_PACKAGE_PATH: SchedulerAgent_function
-      PYTHON_VERSION: '3.11'
-
     steps:
+      # 1. 檢出程式碼
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      # 2. 設定 Python 環境
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.11'
 
+      # 3. 安裝依賴並打包
       - name: Install dependencies
         run: |
-          pip install -r requirements-dev.txt
-          
-      - name: Run tests and generate HTML report
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: |
-          mkdir -p reports
-          pytest --html=reports/test-report.html --self-contained-html
+          python -m pip install --upgrade pip
+          pip install -r SchedulerAgent_function/requirements.txt --target="./.python_packages/lib/site-packages"
 
-      - name: Upload pytest report artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-html-report
-          path: reports/test-report.html
-
-
+      # 4. Azure OIDC 登入
       - name: Azure Login (OIDC)
         uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: f582a309-36b4-49f6-8a30-c2b216855fa7
+          tenant-id: 64637b79-a939-481a-9314-57d0abedf6d2
+          subscription-id: 3d5dc3fc-570c-4703-9fe2-95ae673c3fa2
+          auth-type: SERVICE_PRINCIPAL
           audience: api://AzureADTokenExchange
 
+      # 5. 部署至 Azure Functions
       - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
+        uses: azure/functions-action@v1
         with:
-          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          
-permissions:
-    id-token: write
-    contents: read
+          app-name: SchedulerAgent
+          package: SchedulerAgent_function
+          publish-profile: '' # OIDC 模式不需此欄位
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
+
+      # 6. 驗證部署是否成功
+      - name: Verify deployment
+        run: |
+          echo "Checking Function App status..."
+          az functionapp show --name SchedulerAgent --resource-group SchedulerAgentResourceGroup --query "state"
