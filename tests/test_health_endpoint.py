@@ -1,9 +1,9 @@
+import os
 import requests
 
-# 請將此處網址改為您的本機或雲端 Function App 端點
+# 這裡自動組合健康檢查端點網址
 ENDPOINTS = [
-    "https://scheduleragent.azurewebsites.net/api/health",  # 本機測試
-    # "https://<您的-function-app>.azurewebsites.net/api/health",  # 雲端測試，請取消註解並填入實際網址
+    f"https://{os.environ.get('AZURE_FUNCTIONAPP_NAME')}.azurewebsites.net/api/health"
 ]
 
 def test_health(url):
