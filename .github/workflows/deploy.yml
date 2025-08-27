@@ -15,7 +15,7 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.11"
-  AZURE_FUNCTIONAPP_NAME: "YOUR-FUNCTION-APP-NAME"         # ← 這裡改成你的 Function App 名稱
+  AZURE_FUNCTIONAPP_NAME: "SchedulerAgent"         # ← 這裡改成你的 Function App 名稱
   AZURE_FUNCTIONAPP_PACKAGE_PATH: "SchedulerAgent_function" # 你的函式程式碼根目錄
   REQUIREMENTS_FILE: "SchedulerAgent_function/requirements.txt"
 
