@@ -1,61 +1,57 @@
-name: Deploy SchedulerAgent Function App
+name: 部署並自動測試 SchedulerAgent
 
 on:
   push:
-    branches: [ "main" ]
-    paths:
-      - "SchedulerAgent_function/**"
-      - ".github/workflows/deploy.yml"
-      - "requirements.txt"
+    branches:
+      - main
   workflow_dispatch:
-
-permissions:
-  id-token: write     # ✅ OIDC token for azure/login
-  contents: read
-
-env:
-  PYTHON_VERSION: "3.11"
-  AZURE_FUNCTIONAPP_NAME: "SchedulerAgent"         # ← 這裡改成你的 Function App 名稱
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: "SchedulerAgent_function" # 你的函式程式碼根目錄
-  REQUIREMENTS_FILE: "SchedulerAgent_function/requirements.txt"
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # 1. 檢出原始碼
+      - name: 取得原始碼
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      # 2. 設定 Python 3.11
+      - name: 設定 Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.11'
 
-      - name: Install dependencies (into .python_packages)
+      # 3. 安裝依賴套件（本地測試用）
+      - name: 安裝依賴套件
         run: |
-          python -m pip install --upgrade pip
-          pip install -r "${{ env.REQUIREMENTS_FILE }}" --target "./.python_packages/lib/site-packages"
+          pip install -r SchedulerAgent_function/requirements.txt
 
-      - name: Azure Login (OIDC)
+      # 4. 登入 Azure
+      - name: 登入 Azure
         uses: azure/login@v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Show Azure context (debug)
-        run: |
-          echo "=== az account show ==="
-          az account show
-          echo "=== az account list (table) ==="
-          az account list --output table
-
-      # 若你需要先建立儲存體、App 設定等，可在此加入 az CLI 步驟
-
-      - name: Deploy to Azure Functions
+      # 5. 部署至 Azure Functions
+      - name: 發佈至 Azure Functions
         uses: azure/functions-action@v1
         with:
-          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          # slot-name: 'Production'  # 如有 slot 再開啟
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: SchedulerAgent_function
+
+      # 6. 等待部署完成
+      - name: 等待部署完成
+        run: sleep 30
+
+      # 7. 安裝 requests 套件（執行測試腳本用）
+      - name: 安裝 requests 套件
+        run: pip install requests
+
+      # 8. 執行健康檢查自動化測試
+      - name: 執行健康檢查自動化測試
+        env:
+          AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+        run: |
+          python tests/test_health_endpoint.py
