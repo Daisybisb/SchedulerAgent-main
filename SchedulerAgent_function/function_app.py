@@ -9,7 +9,8 @@ from SchedulerAgent_function.services.scheduler_engine import clean_rest_data, a
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # Blob 儲存設定（請填入正確的連線字串）
-AZURE_STORAGE_CONNECTION_STRING = "請填入你的 Azure Blob 儲存連線字串"
+import os
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "scheduler"
 BLOB_NAME = "SchedulerInfoData.sample.xlsx"
 
