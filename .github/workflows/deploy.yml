@@ -1,6 +1,5 @@
 name: 部署並自動測試 SchedulerAgent
 
-# OIDC 需要的權限（建議加上，否則 azure/login 可能取不到 ID Token）
 permissions:
   id-token: write
   contents: read
@@ -18,25 +17,21 @@ env:
   FUNCTION_DIR: SchedulerAgent_function
   AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
   PYTHON_VERSION: "3.11"
-  # 切換是否執行「雲端健康檢查」整合測試（因目前 403，預設關閉）
-  HEALTHCHECK_ENABLED: "false"
+  HEALTHCHECK_ENABLED: "true"   # 你已放寬 Client Certificates，可開啟雲端健康檢查
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) 取得原始碼
       - name: 取得原始碼
         uses: actions/checkout@v4
 
-      # 2) 設定 Python
       - name: 設定 Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # 3) 快取 pip 套件
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -45,32 +40,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # 4) 安裝執行相依
       - name: 安裝相依（應用程式）
         run: |
           python -m pip install --upgrade pip
           pip install -r "${{ env.FUNCTION_DIR }}/requirements.txt"
 
-      # 5) 安裝測試相依（pytest、HTML報告、覆蓋率）
       - name: 安裝測試工具
         run: |
           pip install pytest pytest-html pytest-cov
 
-      # 6) 執行「單元測試」——在部署前，僅測本機邏輯（失敗即中止）
-      #    建議將單元測試放在 tests/unit/ 之下；若目前尚未建立，這步會跳過但不失敗
+      # 讓測試可 import 到你的模組（含 SchedulerAgent_function 與根層 services）
+      - name: 設定 PYTHONPATH
+        run: |
+          echo "PYTHONPATH=$GITHUB_WORKSPACE:$GITHUB_WORKSPACE/SchedulerAgent_function" >> $GITHUB_ENV
+
+      # 執行單元測試：同時支援 tests/unit 與 tests
       - name: 執行單元測試（部署前）
         run: |
           mkdir -p reports
-          if [ -d "tests/unit" ]; then
-            pytest -q tests/unit \
-              --maxfail=1 --disable-warnings \
-              --html=reports/unit-test-report.html --self-contained-html \
-              --cov="${{ env.FUNCTION_DIR }}" --cov-report=xml --cov-report=term-missing
-          else
-            echo "No unit tests found under tests/unit (skipped)."
-          fi
+          # 若同時存在，兩者都測；不存在的資料夾會被 pytest 忽略（不會造成失敗）
+          pytest -q \
+            tests/unit \
+            tests \
+            --maxfail=1 --disable-warnings \
+            --html=reports/unit-test-report.html --self-contained-html \
+            --cov="SchedulerAgent_function" --cov-report=xml --cov-report=term-missing
 
-      # 7) 上傳測試報告與覆蓋率（即使沒有 tests/unit 也不會失敗）
       - name: 上傳測試報告（Artifacts）
         uses: actions/upload-artifact@v4
         with:
@@ -81,7 +76,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # 8) 登入 Azure（OIDC）
       - name: 登入 Azure
         uses: azure/login@v1
         with:
@@ -89,26 +83,18 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 9) 發佈至 Azure Functions
       - name: 發佈至 Azure Functions
         uses: azure/functions-action@v1
         with:
           app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
           package: ${{ env.FUNCTION_DIR }}
-          # 若需強制遠端建置，可加入：
-          # scm-do-build-during-deployment: true
 
-      # 10) 等待平台啟動
       - name: 等待部署完成
         run: sleep 30
 
-      # 11) （可選）雲端健康檢查整合測試 - 預設關閉，避免目前 403 造成紅燈
-      - name: 執行健康檢查整合測試（可選）
+      - name: 執行健康檢查整合測試（雲端 API）
         if: env.HEALTHCHECK_ENABLED == 'true'
         env:
           AZURE_FUNCTIONAPP_NAME: ${{ env.AZURE_FUNCTIONAPP_NAME }}
         run: |
-          # 這個測試會打 https://<app>.azurewebsites.net/api/health
-          # 確認在 Azure Portal 將 Client Certificates 放寬（或讓此端點匿名）後再開啟
-          python tests/test_health_endpoint.py
-
+          pytest -q tests/test_health_endpoint.py --maxfail=1 --disable-warnings
