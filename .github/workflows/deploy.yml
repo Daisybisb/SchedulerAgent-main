@@ -2,7 +2,7 @@ name: 部署並自動測試 SchedulerAgent
 
 permissions:
   id-token: write
-  contents: read
+  contents: write  # 發佈 gh-pages 與建立 tag 需要 write 權限
 
 on:
   push:
@@ -17,7 +17,7 @@ env:
   FUNCTION_DIR: SchedulerAgent_function
   AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
   PYTHON_VERSION: "3.11"
-  HEALTHCHECK_ENABLED: "true"   # 你已放寬 Client Certificates，可開啟雲端健康檢查
+  HEALTHCHECK_ENABLED: "true"
 
 jobs:
   build-and-deploy:
@@ -45,26 +45,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r "${{ env.FUNCTION_DIR }}/requirements.txt"
 
-      - name: 安裝測試工具
+      - name: 安裝測試與覆蓋率工具
         run: |
-          pip install pytest pytest-html pytest-cov
+          pip install pytest pytest-html pytest-cov coverage
 
-      # 讓測試可 import 到你的模組（含 SchedulerAgent_function 與根層 services）
       - name: 設定 PYTHONPATH
         run: |
           echo "PYTHONPATH=$GITHUB_WORKSPACE:$GITHUB_WORKSPACE/SchedulerAgent_function" >> $GITHUB_ENV
 
-      # 執行單元測試：同時支援 tests/unit 與 tests
+      - name: 清除 legacy health/ 目錄（若存在）
+        run: |
+          rm -rf "${{ env.FUNCTION_DIR }}/health"
+
       - name: 執行單元測試（部署前）
         run: |
           mkdir -p reports
-          # 若同時存在，兩者都測；不存在的資料夾會被 pytest 忽略（不會造成失敗）
           pytest -q \
             tests/unit \
             tests \
             --maxfail=1 --disable-warnings \
             --html=reports/unit-test-report.html --self-contained-html \
             --cov="SchedulerAgent_function" --cov-report=xml --cov-report=term-missing
+          coverage html -d reports/htmlcov
 
       - name: 上傳測試報告（Artifacts）
         uses: actions/upload-artifact@v4
@@ -73,8 +75,18 @@ jobs:
           path: |
             reports/unit-test-report.html
             coverage.xml
+            reports/htmlcov
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: 發佈測試覆蓋率至 gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./reports/htmlcov
+          publish_branch: gh-pages
+          destination_dir: coverage
+          commit_message: "更新測試覆蓋率報告 ${{ github.sha }}"
 
       - name: 登入 Azure
         uses: azure/login@v1
@@ -94,7 +106,12 @@ jobs:
 
       - name: 執行健康檢查整合測試（雲端 API）
         if: env.HEALTHCHECK_ENABLED == 'true'
-        env:
-          AZURE_FUNCTIONAPP_NAME: ${{ env.AZURE_FUNCTIONAPP_NAME }}
         run: |
           pytest -q tests/test_health_endpoint.py --maxfail=1 --disable-warnings
+
+      - name: 建立部署版本標記
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag "deploy-$(date +'%Y%m%d%H%M')"
+          git push origin --tags
