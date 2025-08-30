@@ -1,5 +1,0 @@
-# 根目錄：requirements-dev.txt（本機/CI 測試用）
--r SchedulerAgent_function/requirements.txt
-
-pytest>=8.4
-pytest-html>=4.1
