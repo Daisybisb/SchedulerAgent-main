@@ -85,7 +85,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./reports/htmlcov
           publish_branch: gh-pages
-          destination_dir: coverage
           commit_message: "更新測試覆蓋率報告 ${{ github.sha }}"
 
       - name: 登入 Azure
